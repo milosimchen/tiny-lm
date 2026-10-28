@@ -7,3 +7,6 @@ data/*.bin
 checkpoints/
 *.pt
 .DS_Store
+
+# Private notes
+LEARNING.md

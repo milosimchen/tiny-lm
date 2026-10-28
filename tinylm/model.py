@@ -1,6 +1,6 @@
-"""A GPT-style transformer language model, written out piece by piece.
+"""Decoder-only transformer language model (GPT-style, pre-norm).
 
-Reading order: CausalSelfAttention -> MLP -> Block -> GPT.
+Components: CausalSelfAttention -> MLP -> Block -> GPT.
 
 The model's job: given tokens t_1..t_n, output a probability distribution
 over the next token at every position. Training minimizes cross-entropy
@@ -56,8 +56,8 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
 
-        # Scaled dot-product attention, written out explicitly so you can see it.
-        # (Later you can swap in F.scaled_dot_product_attention for speed.)
+        # Scaled dot-product attention, kept explicit so attention weights can be
+        # inspected. F.scaled_dot_product_attention is the faster fused equivalent.
         att = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)   # (B, nh, T, T)
         att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
         att = F.softmax(att, dim=-1)

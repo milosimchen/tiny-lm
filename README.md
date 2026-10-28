@@ -1,47 +1,17 @@
 # tiny-lm
 
-A small GPT-style language model, built and trained from scratch in PyTorch. Every piece is written out so it can be read, changed and broken on purpose: the tokenizer, attention, the training loop and sampling.
+A GPT-style language model implemented from scratch in PyTorch: tokenizers, a decoder-only transformer, the training loop and sampling. The only runtime dependency besides PyTorch is NumPy.
 
-The goal is to understand how an LLM works by building one, then to grow it milestone by milestone into a model trained on data you choose.
+## Results
 
-## Quickstart
-
-```bash
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-python scripts/download_data.py                        # ~1 MB of Shakespeare
-python -m pytest                                        # should all pass
-python train.py --preset tiny                           # ~1 minute on a laptop CPU
-python sample.py --ckpt checkpoints/run --prompt "ROMEO:"
-```
-
-At the `tiny` preset the output is mostly gibberish with the right shape: line breaks, capitalized names and colons. Then run `python train.py` (the `small` preset, a few minutes on an Apple Silicon or NVIDIA GPU) and the text starts to look like Shakespeare.
-
-## What's in here
-
-| File | What it does |
-|---|---|
-| `tinylm/tokenizer.py` | Character-level and byte-pair-encoding (BPE) tokenizers, pure Python |
-| `tinylm/model.py` | The transformer: causal self-attention, MLP, blocks, and the GPT wrapper with `generate()` |
-| `tinylm/data.py` | Train/val split and random batches (each target is the next token) |
-| `train.py` | Training loop: AdamW, warmup and cosine learning-rate decay, gradient clipping, evaluation, checkpoints |
-| `sample.py` | Generate text from a checkpoint, with temperature and top-k |
-| `scripts/plot_loss.py` | Plot train and val loss from a run (`pip install matplotlib`) |
-| `tests/` | Checks that the tokenizers round-trip, attention is causal, and the model can memorize a batch |
-
-Presets: `tiny` (~0.1M parameters, CPU), `small` (~0.8M, laptop GPU), `base` (~10M, use a real GPU such as a free Colab T4). Any setting can be overridden, for example `python train.py --n-layer 6 --lr 5e-4`.
-
-## Results so far
-
-Character-level Shakespeare, `small` preset (0.82M parameters), 3,000 steps in about 2 minutes on an Apple Silicon laptop GPU (MPS):
+Character-level model trained on Tiny Shakespeare (1.1M characters). The `small` configuration has 0.82M parameters and trains for 3,000 steps in about two minutes on an Apple Silicon GPU (MPS).
 
 | | Train loss | Val loss |
 |---|---|---|
-| Untrained (uniform guess, ln 65 ≈ 4.17) | 4.23 | 4.23 |
+| Untrained (uniform over 65 characters, ln 65 ≈ 4.17) | 4.23 | 4.23 |
 | After 3,000 steps | 1.50 | **1.68** |
 
-Sample (`python sample.py --prompt "ROMEO:"`, temperature 0.8):
+Sample, prompted with `ROMEO:` at temperature 0.8:
 
 ```
 ROMEO:
@@ -55,34 +25,40 @@ AUTOLYCUS:
 Night in the be one of lovest hath care.
 ```
 
-The model has learned the format of a play, real character names and many real words, but not grammar or meaning. The widening gap between train and val loss toward the end is the first sign of overfitting.
+At this size the model picks up the format of a play (speaker headings, verse line breaks), real character names and much of the vocabulary, but not syntax. Train and validation loss start to separate after about 1,000 steps, so the next gains should come from regularization and more data rather than longer training.
 
-## Roadmap
+## Running it
 
-Each milestone ends with something you can show: a loss curve, generated samples, or a short write-up in this README.
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-**1. Get it running and read every line.**
-Train `tiny` and `small`. Read `model.py` top to bottom until you can explain why the attention mask is lower-triangular and why the targets are the inputs shifted by one. Plot the loss. *Done when:* val loss drops below ~2.0 on Shakespeare (char-level, `small`) and you can explain each line of `CausalSelfAttention`.
+python scripts/download_data.py      # Tiny Shakespeare
+python -m pytest                     # 12 tests
+python train.py                      # small preset; --preset tiny for a quick CPU run
+python sample.py --ckpt checkpoints/run --prompt "ROMEO:"
+```
 
-**2. Break it on purpose.**
-Run one experiment at a time and record the val loss: remove the causal mask (training loss collapses because the model can see the answer; why is generation then useless?), remove positional embeddings, remove the residual connections, drop the learning-rate warmup, crank dropout to 0.5. *Done when:* a results table in this README shows what each component contributes.
+Any UTF-8 text file can be used with `--data path/to/file.txt`. Presets: `tiny` (0.1M parameters, CPU), `small` (0.8M, laptop GPU) and `base` (10M, discrete GPU). Every setting can be overridden from the command line.
 
-**3. Switch to BPE.**
-Train with `--tokenizer bpe --vocab-size 1024`. Compare tokens per character, training speed and sample quality against char-level. Note that loss per token isn't comparable across tokenizers. Work out how to compare them fairly (hint: bits per character). *Done when:* you have a fair comparison.
+## Implementation notes
 
-**4. Scale up on a GPU.**
-Move to Google Colab (free T4) and train `base`. Swap the hand-written attention for `F.scaled_dot_product_attention` and measure the speedup. Add mixed precision (`torch.autocast`). *Done when:* you have a ~10M-parameter model and timing numbers for each optimization.
+- **Tokenizers** (`tinylm/tokenizer.py`): character-level and byte-level BPE trained on the corpus. BPE encoding applies merges in the order they were learned, so encoding matches training exactly and round-trips arbitrary UTF-8.
+- **Model** (`tinylm/model.py`): pre-norm transformer blocks, learned positional embeddings, GELU MLP, and input/output weight tying. Attention is implemented explicitly rather than with the fused kernel so attention weights can be inspected.
+- **Training** (`train.py`): AdamW with weight decay applied only to weight matrices, linear warmup followed by cosine decay, gradient clipping at 1.0, loss averaged over 50 batches for each evaluation, and the best checkpoint kept by validation loss.
+- **Tests** (`tests/`): tokenizer round-trips (including unseen Unicode), a causality check that changing a later token leaves earlier predictions unchanged, initial loss near ln(vocab size), and the model overfitting a single batch.
 
-**5. Train on your own data.**
-Pick a corpus you care about, such as quantum-computing arXiv abstracts, Qiskit source code, or your own notes. Clean it, train a BPE tokenizer on it, and train a model. *Done when:* it generates plausible text in that domain and you've written up what the data cleaning involved, which usually turns out to be the hard part.
+## Next
 
-**6. Evaluate and fine-tune.**
-Hold out a test set and report perplexity. Then fine-tune: start from your Shakespeare checkpoint and continue training on a small new corpus, comparing against training from scratch. *Done when:* you can show when fine-tuning helps and when it doesn't.
+- [x] Character-level baseline on Tiny Shakespeare
+- [ ] Ablations: causal mask, positional embeddings, residual connections, warmup
+- [ ] BPE vs. character tokenization, compared in bits per character
+- [ ] Scale to ~10M parameters on a GPU with fused attention and mixed precision
+- [ ] Domain model trained on quantum-computing papers and Qiskit source
+- [ ] Held-out evaluation and fine-tuning experiments
 
-**Stretch goals:** key-value caching for faster generation, rotary position embeddings, a tiny instruction-tuning dataset you write yourself, or loading GPT-2 weights into this architecture to check your implementation matches.
+## References
 
-## Good references
-
-- Andrej Karpathy, *Let's build GPT: from scratch, in code, spelled out* (YouTube) and his nanoGPT repo, the closest companion to this project
-- Vaswani et al., *Attention Is All You Need* (2017), the original transformer paper
-- Jay Alammar, *The Illustrated Transformer*, for intuition about attention
+- Radford et al., *Language Models are Unsupervised Multitask Learners* (GPT-2), 2019
+- Vaswani et al., *Attention Is All You Need*, 2017
+- Andrej Karpathy's [nanoGPT](https://github.com/karpathy/nanoGPT) and [char-rnn](https://github.com/karpathy/char-rnn), the source of the Tiny Shakespeare dataset

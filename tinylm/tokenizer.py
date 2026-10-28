@@ -1,15 +1,13 @@
-"""Tokenizers: turn text into integer ids and back.
+"""Tokenizers mapping text to integer ids and back.
 
-Two options, in the order you'll use them:
+* CharTokenizer: one token per character. Small vocabulary (65 for
+  Shakespeare) and no training cost.
+* BPETokenizer: byte-level byte-pair encoding, as used by GPT-2. Starting from
+  raw bytes, it repeatedly merges the most frequent adjacent pair into a new
+  token, so common chunks become single ids and sequences get shorter.
 
-* CharTokenizer: one token per character. Tiny vocabulary (~65 for
-  Shakespeare), dead simple, and the right place to start.
-* BPETokenizer: byte-pair encoding, the same idea GPT models use. It starts
-  from raw bytes and repeatedly merges the most frequent adjacent pair into a
-  new token, so common chunks like "the" become a single id. Sequences get
-  shorter, so the model sees more text per context window.
-
-Both are pure Python with no dependencies, so you can read every line.
+Both are dependency-free so the tokenizer can be inspected and tested in
+isolation from the model.
 """
 
 from __future__ import annotations
