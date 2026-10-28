@@ -32,6 +32,31 @@ At the `tiny` preset the output is mostly gibberish with the right shape: line b
 
 Presets: `tiny` (~0.1M parameters, CPU), `small` (~0.8M, laptop GPU), `base` (~10M, use a real GPU such as a free Colab T4). Any setting can be overridden, for example `python train.py --n-layer 6 --lr 5e-4`.
 
+## Results so far
+
+Character-level Shakespeare, `small` preset (0.82M parameters), 3,000 steps in about 2 minutes on an Apple Silicon laptop GPU (MPS):
+
+| | Train loss | Val loss |
+|---|---|---|
+| Untrained (uniform guess, ln 65 ≈ 4.17) | 4.23 | 4.23 |
+| After 3,000 steps | 1.50 | **1.68** |
+
+Sample (`python sample.py --prompt "ROMEO:"`, temperature 0.8):
+
+```
+ROMEO:
+And so. Your for is courtory many his soul,
+She was can parting of prayers, and a may too.
+
+JULIET:
+O provost what this partian numbles, if it me to lord.
+
+AUTOLYCUS:
+Night in the be one of lovest hath care.
+```
+
+The model has learned the format of a play, real character names and many real words, but not grammar or meaning. The widening gap between train and val loss toward the end is the first sign of overfitting.
+
 ## Roadmap
 
 Each milestone ends with something you can show: a loss curve, generated samples, or a short write-up in this README.
